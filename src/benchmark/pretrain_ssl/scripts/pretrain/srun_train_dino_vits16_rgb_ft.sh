@@ -17,8 +17,6 @@ module load python/anaconda3.10-2022.10
 # activate virtualenv or conda env if needed
 source .venv/bin/activate
 
-export WANDB_API_KEY="1d6d3552cc426c9580fad66684d5950088c5210d"
-
 srun torchrun --nproc_per_node=4 pretrain_dino_rgb.py \
     --seed 42 \
     --arch vit_small \
