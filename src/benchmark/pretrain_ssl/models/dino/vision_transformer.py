@@ -1,25 +1,9 @@
-# Copyright (c) Facebook, Inc. and its affiliates.
-# 
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-# 
-#     http://www.apache.org/licenses/LICENSE-2.0
-# 
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-"""
-Mostly copy-paste from timm library.
-https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py
-"""
 import math
 from functools import partial
 
 import torch
 import torch.nn as nn
+import torch.nn.utils.parametrizations as param
 
 from models.dino.utils import trunc_normal_
 
@@ -36,8 +20,7 @@ def drop_path(x, drop_prob: float = 0., training: bool = False):
 
 
 class DropPath(nn.Module):
-    """Drop paths (Stochastic Depth) per sample  (when applied in main path of residual blocks).
-    """
+    """Drop paths (Stochastic Depth) per sample (when applied in main path of residual blocks)."""
     def __init__(self, drop_prob=None):
         super(DropPath, self).__init__()
         self.drop_prob = drop_prob
@@ -114,8 +97,7 @@ class Block(nn.Module):
 
 
 class PatchEmbed(nn.Module):
-    """ Image to Patch Embedding
-    """
+    """ Image to Patch Embedding """
     def __init__(self, img_size=224, patch_size=16, in_chans=3, embed_dim=768):
         super().__init__()
         num_patches = (img_size // patch_size) * (img_size // patch_size)
@@ -195,6 +177,7 @@ class VisionTransformer(nn.Module):
 
     def prepare_tokens(self, x):
         B, nc, w, h = x.shape
+        
         x = self.patch_embed(x)  # patch linear embedding
 
         # add the [CLS] token to the embed patch tokens
@@ -273,10 +256,13 @@ class DINOHead(nn.Module):
             layers.append(nn.Linear(hidden_dim, bottleneck_dim))
             self.mlp = nn.Sequential(*layers)
         self.apply(self._init_weights)
-        self.last_layer = nn.utils.weight_norm(nn.Linear(bottleneck_dim, out_dim, bias=False))
-        self.last_layer.weight_g.data.fill_(1)
+        self.last_layer = param.weight_norm(nn.Linear(bottleneck_dim, out_dim, bias=False))
+        # Fallback: remove the weight normalization parametrization
+        self.last_layer = torch.nn.utils.parametrize.remove_parametrizations(self.last_layer, 'weight')
+        # Normalize the weight (simulate g=1)
+        self.last_layer.weight.data.div_(self.last_layer.weight.data.norm(dim=1, keepdim=True))
         if norm_last_layer:
-            self.last_layer.weight_g.requires_grad = False
+            self.last_layer.weight.requires_grad = False
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):

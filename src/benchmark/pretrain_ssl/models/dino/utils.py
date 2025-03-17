@@ -25,7 +25,7 @@ import random
 import datetime
 import subprocess
 from collections import defaultdict, deque
-
+import argparse
 import numpy as np
 import torch
 from torch import nn
@@ -91,7 +91,7 @@ class Solarization(object):
 
 def load_pretrained_weights(model, pretrained_weights, checkpoint_key, model_name, patch_size):
     if os.path.isfile(pretrained_weights):
-        state_dict = torch.load(pretrained_weights, map_location="cpu")
+        state_dict = torch.load(pretrained_weights, weights_only=False, map_location="cpu")
         if checkpoint_key is not None and checkpoint_key in state_dict:
             print(f"Take key {checkpoint_key} in provided checkpoint dict")
             state_dict = state_dict[checkpoint_key]

@@ -44,71 +44,111 @@ def normalize(img, mean, std):
 ### dataset class
 class SSL4EO(torch.utils.data.Dataset):
 
-    def __init__(self,root, normalize=False, mode=['s1','s2a','s2c'], dtype='uint8'):
+    def __init__(self, root, transform=None, normalize=False, mode=['s1','s2a','s2c'],  dtype='uint8'):
         self.root = root
         self.normalize = normalize
         self.mode = mode
         self.dtype = dtype
-        
+        self.transform = transform
         self.ids = os.listdir(os.path.join(self.root,self.mode[0]))
         self.length = len(self.ids)
 
     def __getitem__(self,index):
-        
-        if 's1' in self.mode:
-            img_s1_4s = self.get_array(self.ids[index], 's1') # [4,2,264,264] float32 or uint8                
+        patch_id = self.ids[index]
+        # Return only outputs for the modes specified
+        if len(self.mode) > 1:
+            images = tuple(self.get_array(patch_id, m) for m in self.mode)
+            if self.transform:
+                images = tuple(self.transform(img) for img in images)
+            return images
         else:
-            img_s1_4s = None
-            
-        if 's2a' in self.mode:
-            img_s2a_4s = self.get_array(self.ids[index], 's2a') # [4,12,264,264] int16 or uint8
-        else:
-            img_s2a_4s = None
-            
-        if 's2c' in self.mode:
-            img_s2c_4s = self.get_array(self.ids[index], 's2c') # [4,13,264,264] int16 or uint8
-        else:
-            img_s2c_4s = None
-
-        return img_s1_4s, img_s2a_4s, img_s2c_4s
+            images = self.get_array(patch_id, self.mode[0])
+            if self.transform:
+                images = self.transform(images)
+            return images
         
     def __len__(self):    
         return self.length
 
     def get_array(self, patch_id, mode):
+        # Determine the directory based on the mode.
         data_root_patch = os.path.join(self.root, mode, patch_id)
         patch_seasons = os.listdir(data_root_patch)
         seasons = []
 
-        if mode=='s1':
+        if mode == 's1':
             bands = ALL_BANDS_S1_GRD
             MEAN = S1_MEAN
-            STD = S1_STD
-        elif mode=='s2a':
+            STD  = S1_STD
+            for patch_id_season in patch_seasons:
+                chs = []
+                for i, band in enumerate(bands):
+                    patch_path = os.path.join(data_root_patch, patch_id_season, f'{band}.tif')
+                    with rasterio.open(patch_path) as dataset:
+                        ch = dataset.read(1)
+                        ch = cv2.resize(ch, dsize=(264, 264), interpolation=cv2.INTER_LINEAR_EXACT)
+                        if self.normalize or (self.dtype=='uint8' and mode=='s1'):
+                            ch = normalize(ch, MEAN[i], STD[i])
+                    chs.append(ch)
+                img = np.stack(chs, axis=0)
+                seasons.append(img)
+                
+        elif mode == 's2a':
             bands = ALL_BANDS_S2_L2A
             MEAN = S2A_MEAN
-            STD = S2A_STD            
-        elif mode=='s2c':
+            STD  = S2A_STD            
+            for patch_id_season in patch_seasons:
+                chs = []
+                for i, band in enumerate(bands):
+                    patch_path = os.path.join(data_root_patch, patch_id_season, f'{band}.tif')
+                    with rasterio.open(patch_path) as dataset:
+                        ch = dataset.read(1)
+                        ch = cv2.resize(ch, dsize=(264, 264), interpolation=cv2.INTER_LINEAR_EXACT)
+                        if self.normalize:
+                            ch = normalize(ch, MEAN[i], STD[i])
+                    chs.append(ch)
+                img = np.stack(chs, axis=0)
+                seasons.append(img)
+                
+        elif mode == 's2c':
             bands = ALL_BANDS_S2_L1C
             MEAN = S2C_MEAN
-            STD = S2C_STD
-            
-        for patch_id_season in patch_seasons:
-            chs = []
-            for i,band in enumerate(bands):
-                patch_path = os.path.join(data_root_patch,patch_id_season,f'{band}.tif')
+            STD  = S2C_STD
+            for patch_id_season in patch_seasons:
+                chs = []
+                for i, band in enumerate(bands):
+                    patch_path = os.path.join(data_root_patch, patch_id_season, f'{band}.tif')
+                    with rasterio.open(patch_path) as dataset:
+                        ch = dataset.read(1)
+                        ch = cv2.resize(ch, dsize=(264, 264), interpolation=cv2.INTER_LINEAR_EXACT)
+                        if self.normalize:
+                            ch = normalize(ch, MEAN[i], STD[i])
+                    chs.append(ch)
+                img = np.stack(chs, axis=0)
+                seasons.append(img)
+                
+        elif mode == 'rgb':
+            # For the RGB version, load the single file "S2C_RGB.tiff" from each season.
+            # Derive mean and std for the RGB bands (B4, B3, B2) from the full S2C stats.
+            # B4 is at index 3, B3 at index 2, and B2 at index 1.
+            rgb_mean = [S2C_MEAN[3], S2C_MEAN[2], S2C_MEAN[1]]
+            rgb_std  = [S2C_STD[3],  S2C_STD[2],  S2C_STD[1]]
+            for patch_id_season in patch_seasons:
+                patch_path = os.path.join(data_root_patch, patch_id_season, 'S2C_RGB.tif')
                 with rasterio.open(patch_path) as dataset:
-                    ch = dataset.read(1)
-                    ch = cv2.resize(ch, dsize=(264, 264), interpolation=cv2.INTER_LINEAR_EXACT) # [264,264]
-                    #coord = dataset.xy(0,0) # up left
-                    if self.normalize or (self.dtype=='uint8' and mode=='s1'):
-                        ch = normalize(ch, MEAN[i], STD[i])
-                        
-                chs.append(ch)
-            img = np.stack(chs, axis=0) # [C,264,264]
-            seasons.append(img)
-        img_4s = np.stack(seasons, axis=0) # [4,C,264,264]
-
+                    # Read all channels from the RGB file; assumed order is (B4, B3, B2).
+                    img = dataset.read()  # shape: (3, H, W)
+                    resized_channels = []
+                    for i in range(img.shape[0]):
+                        channel = cv2.resize(img[i], dsize=(264, 264), interpolation=cv2.INTER_LINEAR_EXACT)
+                        if self.normalize:
+                            channel = normalize(channel, rgb_mean[i], rgb_std[i])
+                        resized_channels.append(channel)
+                    img_rgb = np.stack(resized_channels, axis=0)
+                seasons.append(img_rgb)
+                    
+        img_4s = np.stack(seasons, axis=0)  # shape: [4, C, 264, 264]
+        
         if self.normalize:
             return img_4s
         elif self.dtype=='uint8':
@@ -121,8 +161,6 @@ class SSL4EO(torch.utils.data.Dataset):
                 return img_4s.astype('float32')
             else:
                 return img_4s.astype('int16')
-
-
             
 class Subset(Dataset):
 
