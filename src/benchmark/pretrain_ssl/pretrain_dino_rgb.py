@@ -198,10 +198,10 @@ def train_dino(args):
     args.n_channels = 3
 
     dataset = SSL4EO(
-        root = r'/mnt/e/data/ssl4eo/0k_251k_uint8_jpeg_tif/', 
-        normalize=False, 
-        mode=['rgb'], 
-        dtype='uint8',
+        root = args.data, 
+        normalize=args.normalize, 
+        mode=args.mode, 
+        dtype=args.dtype,
         transform=transform
     )
     sampler = torch.utils.data.DistributedSampler(dataset, shuffle=True)
@@ -351,7 +351,9 @@ def train_dino(args):
             epoch, fp16_scaler, args)
         if args.wandb_log and utils.is_main_process():
             wandb.log(
-                epoch = epoch
+                data = {
+                    'epoch': epoch
+                }
             )
         # ============ writing logs ... ============
         save_dict = {
@@ -432,9 +434,11 @@ def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loade
         metric_logger.update(wd=optimizer.param_groups[0]["weight_decay"])
         if args.wandb_log and utils.is_main_process():
             wandb.log(
-                loss = loss.item(),
-                lr = optimizer.param_groups[0]["lr"],
-                weight_decay = optimizer.param_groups[0]["weight_decay"]
+                data={
+                    'loss': loss.item(),
+                    'lr': optimizer.param_groups[0]["lr"],
+                    'weight_decay': optimizer.param_groups[0]["weight_decay"]
+                }
             ) 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
@@ -716,6 +720,7 @@ class DataAugmentationDINO_RGB(object):
             crops.append(self.local_transfo(x3))
 
         return crops
+
 class DataAugmentationDINO_S1(object):
     def __init__(self, global_crops_scale, local_crops_scale, local_crops_number):
         flip_and_color_jitter = cvtransforms.Compose([

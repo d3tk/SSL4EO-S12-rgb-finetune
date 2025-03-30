@@ -4,20 +4,24 @@
 #SBATCH --nodes=1   # Use a single node
 #SBATCH --gres=gpu:4     # Request 2 GPUs on that node
 #SBATCH --cluster=gpu    # Specify the GPU cluster
-#SBATCH --partition=ls40s     # Use the ls40s partition (adjust if needed)
+#SBATCH --partition=l40s     # Use the l40s partition (adjust if needed)
 #SBATCH --time=24:00:00  # Walltime (days-HH:MM:SS); adjust as necessary
 #SBATCH --mail-user=DTK28@pitt.edu # Your Pitt email for notifications
-#SBATCH --mail-type=BEGIN,END,FAIL # Send email when job ends or fails
-
+#SBATCH --mail-type=END,FAIL # Send email when job ends or fails
+#SBATCH --account=cs2770_2025s
+# srun -M gpu -n1 --partition=l40s --gres=gpu:2 -t02:00:00  --pty bash 
 # load required modules
+
 module purge
-module load gcc/12.2.0
+module load gcc/8.2.0
 module load python/anaconda3.10-2022.10
 
 # activate virtualenv or conda env if needed
-source .venv/bin/activate
+source ~/SSL4EO-S12-rgb-finetune/.venv/bin/activate
 
-srun torchrun --nproc_per_node=4 pretrain_dino_rgb.py \
+cd $SLURM_SUBMIT_DIR
+
+torchrun --nproc_per_node=4 pretrain_dino_rgb.py \
     --seed 42 \
     --arch vit_small \
     --patch_size 16 \
@@ -29,7 +33,7 @@ srun torchrun --nproc_per_node=4 pretrain_dino_rgb.py \
     --weight_decay 0.04 \
     --weight_decay_end 0.4 \
     --clip_grad 3.0 \
-    --batch_size_per_gpu 144 \
+    --batch_size_per_gpu 224 \
     --epochs 100 \
     --freeze_last_layer 1 \
     --lr 0.0005 \
@@ -37,58 +41,21 @@ srun torchrun --nproc_per_node=4 pretrain_dino_rgb.py \
     --min_lr 1e-6 \
     --optimizer adamw \
     --drop_path_rate 0.1 \
-    --checkpoints_dir ~/checkpoints/ssl4eo/dino/vits/rgb \
+    --checkpoints_dir /ix/cs2770_2025s/dtk28/checkpts/ssl4eo/ \
     --saveckp_freq 20 \
     --num_workers 1 \
     --dist_url env:// \
-    --data ~/datasets/ssl4eo/0k_251k_uint8_jpeg_tif \
+    --data /ix/cs2770_2025s/dtk28/datasets/ssl4eo/ \
     --bands RGB \
     --is_slurm_job \
     --normalize \
     --mode rgb \
     --dtype uint8 \
-    --season augment  
-    --strategy single   
+    --season augment \
+    --strategy single \
     --in_size 224 \
     --wandb_project SSL4EO-RUNS \
     --wandb_entity msc-thesis-proj \
     --wandb_run_name ssl4eo_vits_rgb_finetune \
     --wandb_log --wandb_run_name ssl4eo_vits_rgb_finetune
 
-# srun torchrun --nproc_per_node=1 pretrain_dino_rgb.py \
-#     --seed 42 \
-#     --arch vit_small \
-#     --patch_size 16 \
-#     --out_dim 65536 \
-#     --momentum_teacher 0.996 \
-#     --warmup_teacher_temp 0.04 \
-#     --teacher_temp 0.04 \
-#     --warmup_teacher_temp_epochs 0 \
-#     --weight_decay 0.04 \
-#     --weight_decay_end 0.4 \
-#     --clip_grad 3.0 \
-#     --batch_size_per_gpu 8 \
-#     --epochs 100 \
-#     --freeze_last_layer 1 \
-#     --lr 0.0005 \
-#     --warmup_epochs 10 \
-#     --min_lr 1e-6 \
-#     --optimizer adamw \
-#     --drop_path_rate 0.1 \
-#     --checkpoints_dir checkpoints/ssl4eo/dino/vits/rgb \
-#     --saveckp_freq 20 \
-#     --num_workers 1 \
-#     --dist_url env:// \
-#     --data /mnt/e/data/ssl4eo/0k_251k_uint8_jpeg_tif \
-#     --bands RGB \
-#     --is_slurm_job \
-#     --normalize \
-#     --mode rgb \
-#     --dtype uint8 \
-#     --season augment  
-#     --strategy single   
-#     --in_size 224 \
-#     --wandb_project SSL4EO-RUNS \
-#     --wandb_entity msc-thesis-proj \
-#     --wandb_run_name ssl4eo_vits_rgb_finetune \
-#     --wandb_log --wandb_run_name ssl4eo_vits_rgb_finetune
